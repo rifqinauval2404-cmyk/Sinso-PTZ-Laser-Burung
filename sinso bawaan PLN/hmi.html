@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sinso PTZ HMI</title>
+<style>
+  :root{
+    --bg:#eef1f7;
+    --card:#ffffff;
+    --border:#e3e7ee;
+    --text:#161b26;
+    --text-soft:#66707e;
+    --text-mute:#8993a1;
+    --accent:#4f46e5;
+    --accent-soft:#eef0fe;
+    --danger:#e11d48;
+    --danger-soft:#fdecef;
+    --success:#16a34a;
+    --success-soft:#e9f8ee;
+    --radius-lg:20px;
+    --radius-md:14px;
+    --radius-sm:10px;
+    --shadow-card:0 1px 2px rgba(16,24,40,.04), 0 8px 24px -8px rgba(16,24,40,.12);
+    --shadow-btn:0 1px 2px rgba(16,24,40,.06);
+  }
+  *{box-sizing:border-box;}
+  html, body{height:100%; overflow-x:hidden;}
+  body{
+    margin:0; padding:10px 18px; color:var(--text);
+    font-family:"Segoe UI", system-ui, -apple-system, sans-serif;
+    background:
+      radial-gradient(1100px 550px at 8% -10%, #eef2ff 0%, transparent 60%),
+      radial-gradient(900px 480px at 100% -5%, #eafaf1 0%, transparent 55%),
+      var(--bg);
+  }
+  .wrap{max-width:1600px; height:100%; margin:0 auto; display:flex; flex-direction:column; gap:8px;}
+
+  header.top{display:flex; align-items:flex-start; justify-content:space-between; gap:20px; flex-wrap:wrap; flex-shrink:0;}
+  h1{font-size:17px; margin:0 0 2px; font-weight:700; letter-spacing:-.01em; display:flex; align-items:center; gap:8px;}
+  h1 .brand-icon{width:19px; height:19px; color:var(--accent); flex-shrink:0;}
+  h1 .brand-icon svg{width:100%; height:100%;}
+  .sub{
+    font-size:11.5px; color:var(--text-soft); max-width:640px; line-height:1.45;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; cursor:help;
+  }
+
+  #status{
+    font-size:12px; font-weight:700; padding:9px 16px 9px 14px; border-radius:999px;
+    white-space:nowrap; display:inline-flex; align-items:center; transition:background .3s ease, color .3s ease;
+  }
+  #status::before{content:""; display:inline-block; width:7px; height:7px; border-radius:50%; background:currentColor; margin-right:9px;}
+  #status.ok{background:var(--success-soft); color:var(--success);}
+  #status.ok::before{animation:statusPulse 1.8s ease-out infinite;}
+  #status.bad{background:var(--danger-soft); color:var(--danger);}
+  #status.bad::before{animation:statusBlink 1.2s ease-in-out infinite;}
+
+  @keyframes statusPulse{
+    0%{box-shadow:0 0 0 0 rgba(22,163,74,.45);}
+    70%{box-shadow:0 0 0 6px rgba(22,163,74,0);}
+    100%{box-shadow:0 0 0 0 rgba(22,163,74,0);}
+  }
+  @keyframes statusBlink{
+    0%,100%{opacity:1;} 50%{opacity:.35;}
+  }
+
+  @keyframes fadeSlideUp{
+    from{opacity:0; transform:translateY(10px);}
+    to{opacity:1; transform:translateY(0);}
+  }
+  header.top{animation:fadeSlideUp .5s ease both;}
+  .card{animation:fadeSlideUp .5s ease both;}
+  .sidebar > .card:nth-child(1){animation-delay:.05s;}
+  .sidebar > .card:nth-child(2){animation-delay:.12s;}
+  .gc-canvas{animation-delay:.1s;}
+  .gc-schedule{animation-delay:.16s;}
+  .gc-table{animation-delay:.21s;}
+  .gc-log{animation-delay:.26s;}
+
+  .bento{
+    flex:1; min-height:0; overflow-y:auto;
+    display:grid;
+    grid-template-columns:minmax(240px,290px) 1fr;
+    grid-template-rows:auto minmax(220px,1fr);
+    grid-template-areas:
+      "sidebar canvas"
+      "bottom  bottom";
+    gap:10px;
+  }
+  .bottom{grid-area:bottom; display:grid; grid-template-columns:minmax(230px,280px) 1fr 1fr; gap:10px; min-height:0;}
+  @media (max-width:980px){
+    .bento{grid-template-columns:minmax(0,1fr); grid-template-rows:none; grid-template-areas:"sidebar" "canvas" "bottom";}
+    .bottom{grid-template-columns:minmax(0,1fr);}
+  }
+  /* extra squeeze for very short browser windows */
+  @media (max-height:650px){
+    .jog{grid-template-columns:repeat(3,34px); grid-template-rows:repeat(3,34px); gap:3px;}
+    .card{padding:8px;}
+  }
+  /* touch targets: gated on actual touch capability (not viewport width) so this doesn't
+     collide with the max-height:650px rule above on a short-viewport phone in portrait -
+     placed after it so it wins the cascade there. */
+  @media (hover:none) and (pointer:coarse){
+    .jog{grid-template-columns:repeat(3,48px); grid-template-rows:repeat(3,48px); gap:6px;}
+    .jog button{font-size:18px;}
+    #routeRows .std{width:36px; height:36px; font-size:13px;}
+    .info-btn{width:38px; height:38px;}
+    .schedule-item .std{width:32px; height:32px;}
+  }
+  /* small-phone polish (cosmetic only, e.g. iPhone SE class) */
+  @media (max-width:480px){
+    body{padding:8px 10px;}
+    .card{padding:9px;}
+  }
+
+  .sidebar{grid-area:sidebar; display:flex; flex-direction:column; gap:10px; min-width:0;}
+  .sidebar > .card{flex-shrink:0;}
+
+  .card{background:var(--card); border:1px solid var(--border); border-radius:var(--radius-lg); box-shadow:var(--shadow-card); padding:11px; display:flex; flex-direction:column; min-height:0; min-width:0;}
+  .laser-row, .laser-state{flex-shrink:0;}
+  .gc-canvas{grid-area:canvas;}
+
+  .card-head{display:flex; align-items:center; gap:8px; margin-bottom:8px; flex-shrink:0;}
+  .icon-chip{width:26px; height:26px; border-radius:9px; display:flex; align-items:center; justify-content:center; flex-shrink:0;}
+  .icon-chip svg{width:14px; height:14px;}
+  .chip-indigo{background:var(--accent-soft); color:var(--accent);}
+  .chip-red{background:#fee2e2; color:#dc2626;}
+  .chip-slate{background:#eef1f5; color:#475569;}
+  .card-head h3{margin:0; font-size:13px; font-weight:700;}
+
+  .divider{height:1px; background:var(--border); margin:7px 0; flex-shrink:0;}
+
+  /* jog pad */
+  .jog{display:grid; grid-template-columns:repeat(3,40px); grid-template-rows:repeat(3,40px); gap:4px; margin:0 auto; flex-shrink:0;}
+  .jog button{
+    border:1px solid var(--border); background:#f8f9fc; border-radius:12px; font-size:16px;
+    color:var(--text); cursor:pointer; display:flex; align-items:center; justify-content:center;
+    transition:transform .12s ease, background .12s ease, color .12s ease; box-shadow:var(--shadow-btn);
+    touch-action:none; -webkit-user-select:none; user-select:none;
+  }
+  .jog button:hover{background:var(--accent-soft); border-color:#c7ccf7; color:var(--accent); transform:translateY(-1px);}
+  .jog button:active{transform:translateY(0) scale(.94);background:#e4e7fb;}
+  #stopBtn{background:var(--danger); color:#fff; border-color:var(--danger); font-weight:800; font-size:10px; letter-spacing:.03em; position:relative;}
+  #stopBtn:hover{background:#c81440; color:#fff;}
+  #stopBtn::after{content:""; position:absolute; inset:-4px; border-radius:inherit; border:2px solid var(--danger); opacity:0; pointer-events:none; animation:stopRing 2.4s ease-out infinite;}
+  @keyframes stopRing{
+    0%{opacity:.55; transform:scale(1);}
+    100%{opacity:0; transform:scale(1.4);}
+  }
+
+  .laser-row{display:flex; flex-wrap:wrap; gap:8px; align-items:center;}
+  .laser-chip{transition:background .3s ease, color .3s ease;}
+  .laser-row:has(+ .laser-state b.on) .laser-chip{background:var(--success-soft); color:var(--success); animation:iconPulse 1.4s ease-in-out infinite;}
+  @keyframes iconPulse{
+    0%,100%{box-shadow:0 0 0 0 rgba(22,163,74,.4);}
+    50%{box-shadow:0 0 0 5px rgba(22,163,74,0);}
+  }
+  .laser-state{font-size:12px; color:var(--text-soft); margin-top:7px;}
+  .laser-state b{color:var(--danger); font-weight:800; transition:color .2s ease;}
+  .laser-state b.on{color:var(--success); animation:laserTextGlow 1.4s ease-in-out infinite;}
+  @keyframes laserTextGlow{
+    0%,100%{text-shadow:0 0 0 rgba(22,163,74,0);}
+    50%{text-shadow:0 0 6px rgba(22,163,74,.6);}
+  }
+
+  /* generic buttons */
+  .std{
+    border:1px solid var(--border); background:#f8f9fc; color:var(--text);
+    padding:8px 14px; border-radius:var(--radius-sm); font-size:12.5px; font-weight:600;
+    cursor:pointer; transition:all .12s ease; box-shadow:var(--shadow-btn);
+    display:inline-flex; align-items:center; gap:6px;
+  }
+  .std:hover{background:#eef0f6; border-color:#c9cfdb; transform:translateY(-1px);}
+  .std:active{transform:translateY(0) scale(.96);}
+  .std.primary{background:var(--accent); border-color:var(--accent); color:#fff;}
+  .std.primary:hover{background:#4338ca;}
+  .std.danger-outline{background:#fff; border-color:#f3c6d0; color:var(--danger);}
+  .std.danger-outline:hover{background:var(--danger-soft);}
+  .std.on-btn{background:var(--success-soft); border-color:#bfe6c9; color:var(--success);}
+  .std.on-btn:hover{background:#dcf3e2;}
+  .std.off-btn{background:var(--danger-soft); border-color:#f7c9d2; color:var(--danger);}
+  .std.off-btn:hover{background:#fbdde3;}
+  #routeRows .std{width:26px; height:26px; padding:0; justify-content:center; border-radius:50%; font-size:11px;}
+
+  /* segmented mode toggle */
+  .segmented{display:inline-flex; background:#f1f3f8; border-radius:999px; padding:4px; gap:2px;}
+  .segmented button{border:none; background:transparent; padding:7px 15px; border-radius:999px; font-size:12px; font-weight:700; color:var(--text-soft); cursor:pointer;}
+  .segmented button.active{background:#fff; color:var(--accent); box-shadow:var(--shadow-btn);}
+
+  .toolbar{display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:8px; flex-shrink:0;}
+  .toolbar-icons{display:flex; flex-wrap:wrap; gap:8px;}
+  .info-btn{width:30px; height:30px; padding:0; justify-content:center; border-radius:50%; font-size:12px; font-weight:700; cursor:help;}
+
+  .canvas-wrap{flex:1; min-height:0; overflow:hidden; display:flex; justify-content:center; align-items:center;}
+  #trackCanvas{background:#f7f9fc; border:1px solid var(--border); border-radius:var(--radius-md); cursor:crosshair; display:block; touch-action:none; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;}
+
+  /* playback card */
+  .playback-actions{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; flex-shrink:0;}
+  .playback-actions .std{flex:1 1 110px; justify-content:center; padding:8px 14px; font-size:13px;}
+  .playback-settings{display:flex; align-items:center; gap:18px; flex-wrap:wrap; margin-bottom:10px; flex-shrink:0;}
+  .field{display:flex; align-items:center; gap:8px; font-size:12.5px; font-weight:600; color:var(--text-soft);}
+  input[type=number]{border:1px solid var(--border); border-radius:var(--radius-sm); padding:7px 10px; font-size:13px; width:70px; background:#fbfbfd; color:var(--text);}
+  input[type=number]:focus{outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft);}
+
+  .toggle{display:inline-flex; align-items:center; gap:9px; font-size:12.5px; font-weight:600; color:var(--text-soft); cursor:pointer;}
+  .toggle input{position:absolute; opacity:0; width:0; height:0;}
+  .toggle-track{width:34px; height:20px; background:#d7dbe4; border-radius:999px; position:relative; transition:background .15s ease; flex-shrink:0;}
+  .toggle-track .toggle-thumb{position:absolute; top:2px; left:2px; width:16px; height:16px; background:#fff; border-radius:50%; transition:transform .15s ease; box-shadow:0 1px 2px rgba(0,0,0,.25);}
+  .toggle input:checked + .toggle-track{background:var(--accent);}
+  .toggle input:checked + .toggle-track .toggle-thumb{transform:translateX(14px);}
+
+  .playback-io{display:flex; gap:8px; flex-wrap:wrap; flex-shrink:0;}
+
+  /* table */
+  .table-scroll{flex:1; min-height:0; overflow:auto; -webkit-overflow-scrolling:touch; border:1px solid var(--border); border-radius:var(--radius-md);}
+  table{width:100%; border-collapse:separate; border-spacing:0; font-size:12.5px;}
+  thead th{position:sticky; top:0; background:#f6f7fb; color:var(--text-soft); font-weight:700; font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; padding:10px 8px; text-align:center; border-bottom:1px solid var(--border);}
+  tbody td{padding:8px; text-align:center; border-bottom:1px solid #f0f1f5;}
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr:hover{background:#fafbfe;}
+  .stepnum{color:var(--text-mute); font-weight:700;}
+  .badge{display:inline-block; padding:3px 10px; border-radius:999px; font-size:10.5px; font-weight:700;}
+  .badge-on{background:var(--success-soft); color:var(--success);}
+  .badge-off{background:#f1f2f6; color:var(--text-mute);}
+
+  /* schedule */
+  .schedule-add{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px; flex-shrink:0;}
+  input[type=time]{border:1px solid var(--border); border-radius:var(--radius-sm); padding:6px 8px; font-size:12.5px; background:#fbfbfd; color:var(--text); width:88px;}
+  input[type=time]:focus{outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft);}
+  .schedule-arrow{color:var(--text-mute); font-size:13px;}
+  .schedule-upload{margin-left:auto;}
+  .schedule-list{flex:1; min-height:0; overflow:auto; display:flex; flex-direction:column; gap:8px;}
+  .schedule-empty{font-size:12px; color:var(--text-mute); text-align:center; padding:18px 8px; border:1px dashed var(--border); border-radius:var(--radius-md);}
+  .schedule-item{
+    border:1px solid var(--border); border-radius:var(--radius-md); padding:9px 10px;
+    display:flex; align-items:center; gap:10px; background:#fbfbfd; transition:border-color .2s ease, background .2s ease;
+  }
+  .schedule-item.active{border-color:var(--accent); background:var(--accent-soft); animation:scheduleActivePulse 1.6s ease-in-out infinite;}
+  @keyframes scheduleActivePulse{
+    0%,100%{box-shadow:0 0 0 0 rgba(79,70,229,.25);}
+    50%{box-shadow:0 0 0 5px rgba(79,70,229,0);}
+  }
+  .schedule-time{font-weight:700; font-size:12.5px; white-space:nowrap;}
+  .schedule-meta{flex:1; min-width:0;}
+  .schedule-file{font-size:11.5px; font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .schedule-points{font-size:10.5px; color:var(--text-mute);}
+  .schedule-running{font-size:10px; font-weight:700; color:var(--accent); white-space:nowrap;}
+  .schedule-item .std{width:24px; height:24px; padding:0; justify-content:center; border-radius:50%; font-size:10px; flex-shrink:0;}
+  .schedule-item .toggle{flex-shrink:0;}
+
+  /* log */
+  #log{
+    background:#0f172a; color:#9fb4c7; font-family:ui-monospace, Consolas, monospace; font-size:11px;
+    border-radius:var(--radius-md); padding:12px; flex:1; min-height:0; overflow-y:auto;
+    white-space:pre-wrap; line-height:1.7; border:1px solid #1f2937;
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <header class="top">
+    <div>
+      <h1>
+        <span class="brand-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg></span>
+        Sinso PTZ Control
+      </h1>
+      <div class="sub" title="Kendali PTZ + laser + track builder. Lewat bridge lokal (server.js, ws://localhost:8765 → TCP 192.168.1.60:4196, Pelco-D). Semua command (pan/tilt/laser/goto-angle/Position Query) sudah diverifikasi langsung ke device asli. Marker canvas pas Play mengikuti posisi ASLI device (bukan simulasi) — server polling Position Query tiap ~150ms sampai device sampai target sebelum lanjut ke titik berikutnya.">Kendali PTZ + laser + track builder. Lewat bridge lokal (server.js, ws://localhost:8765 &rarr; TCP 192.168.1.60:4196, Pelco-D). Semua command (pan/tilt/laser/goto-angle/Position Query) sudah diverifikasi langsung ke device asli. Marker canvas pas Play mengikuti posisi ASLI device (bukan simulasi) &mdash; server polling Position Query tiap ~150ms sampai device sampai target sebelum lanjut ke titik berikutnya.</div>
+    </div>
+    <div id="status" class="bad">Connecting to bridge...</div>
+  </header>
+
+  <div class="bento">
+
+   <div class="sidebar">
+    <div class="card gc-manual">
+      <div class="card-head">
+        <span class="icon-chip chip-indigo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg></span>
+        <h3>Kontrol Manual</h3>
+      </div>
+      <div class="jog">
+        <div></div><button data-action="tilt-up" title="Tilt up">&#8593;</button><div></div>
+        <button data-action="pan-left" title="Pan left">&#8592;</button><button id="stopBtn" data-action="stop">STOP</button><button data-action="pan-right" title="Pan right">&#8594;</button>
+        <div></div><button data-action="tilt-down" title="Tilt down">&#8595;</button><div></div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="laser-row">
+        <span class="icon-chip chip-red laser-chip"><svg viewBox="0 0 24 24" fill="currentColor"><polygon points="13,2 3,14 11,14 9,22 21,10 13,10"/></svg></span>
+        <button class="std on-btn" id="laserOnBtn">Laser ON</button>
+        <button class="std off-btn" id="laserOffBtn">Laser OFF</button>
+      </div>
+      <div class="laser-state">Status: <b id="laserState">OFF</b></div>
+    </div>
+
+    <div class="card gc-playback">
+      <div class="card-head">
+        <span class="icon-chip chip-slate"><svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6,4 20,12 6,20"/></svg></span>
+        <h3>Playback</h3>
+      </div>
+      <div class="playback-actions">
+        <button class="std primary" id="playBtn">&#9654; Play track</button>
+        <button class="std danger-outline" id="stopPlayBtn">&#9632; Stop</button>
+      </div>
+      <div class="playback-settings">
+        <label class="field">Tahan <input type="number" id="dwellMs" value="800" step="100" min="0"> ms</label>
+        <label class="toggle"><input type="checkbox" id="loopChk" checked><span class="toggle-track"><span class="toggle-thumb"></span></span>Loop</label>
+        <button class="std" id="loadBtn">&#8593; Load</button>
+        <button class="std" id="saveBtn">&#8595; Save</button>
+        <input type="file" id="fileInput" accept=".json" style="display:none">
+      </div>
+    </div>
+   </div>
+
+    <div class="card gc-canvas">
+      <div class="card-head">
+        <span class="icon-chip chip-indigo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="6" r="2.3" fill="currentColor" stroke="none"/><circle cx="19" cy="18" r="2.3" fill="currentColor" stroke="none"/><path d="M7 7 C11 8 9 16 17 17"/></svg></span>
+        <h3>Track / Route Builder</h3>
+      </div>
+      <div class="toolbar">
+        <div class="segmented">
+          <button class="active" id="modeClickBtn">Klik titik</button>
+          <button id="modeFreeBtn">Freehand</button>
+        </div>
+        <div class="toolbar-icons">
+          <button class="std info-btn" id="infoBtn" title="Model 3D = bentuk alat: baseplate (coklat, panah 0° = acuan arah pan), badan pan (biru, putar H 0-298°), kepala laser (titik + garis merah = moncong laser). Garis lengkung = jangkauan gerak. Klik area jangkauan = tambah waypoint, drag titik = geser, klik-kanan titik = hapus. Freehand: tahan + seret. Shift+drag atau Alt+drag = putar sudut pandang kamera (tidak menggerakkan alat).">&#8505;</button>
+          <button class="std" id="undoBtn">&#8630; Undo</button>
+          <button class="std" id="clearCanvasBtn">&#10005; Clear</button>
+        </div>
+      </div>
+      <div class="canvas-wrap">
+        <canvas id="trackCanvas" width="480" height="360"></canvas>
+      </div>
+    </div>
+
+    <div class="bottom">
+
+    <div class="card gc-schedule">
+      <div class="card-head">
+        <span class="icon-chip chip-indigo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12,7 12,12 16,14"/></svg></span>
+        <h3>Jadwal Otomatis</h3>
+      </div>
+      <div class="schedule-add">
+        <input type="time" id="schedStart" value="06:00" title="Waktu mulai">
+        <span class="schedule-arrow">&#8594;</span>
+        <input type="time" id="schedEnd" value="18:00" title="Waktu berhenti">
+        <button class="std primary schedule-upload" id="schedUploadBtn">&#8593; Upload track.json</button>
+        <input type="file" id="schedFileInput" accept=".json" style="display:none">
+      </div>
+      <div class="schedule-list" id="scheduleList">
+        <div class="schedule-empty">Belum ada jadwal. Atur jam mulai/berhenti lalu upload track.json.</div>
+      </div>
+    </div>
+
+    <div class="card gc-table">
+      <div class="card-head">
+        <span class="icon-chip chip-slate"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="4" width="18" height="3.4" rx="1"/><rect x="3" y="10.3" width="18" height="3.4" rx="1"/><rect x="3" y="16.6" width="18" height="3.4" rx="1"/></svg></span>
+        <h3>Waypoints</h3>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>#</th><th>Angle_H&deg;</th><th>Angle_V&deg;</th><th>Laser</th><th></th></tr></thead>
+          <tbody id="routeRows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card gc-log">
+      <div class="card-head">
+        <span class="icon-chip chip-slate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><polyline points="7,9 11,12 7,15"/><line x1="13" y1="15" x2="17" y2="15"/></svg></span>
+        <h3>Activity Log</h3>
+      </div>
+      <div id="log"></div>
+    </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+// Use the page's own hostname so this works both as a local file:// (location.hostname is
+// empty there, falls back to localhost) and when served over LAN to a phone/tablet (the phone
+// then connects back to whichever machine's IP served the page, not its own "localhost").
+const WS_URL = `ws://${location.hostname || "localhost"}:8765`;
+
+// --- angle ranges ---
+// H: confirmed live (jog test, PROJECT_CONTEXT.md) max ~298.27deg; min not yet found, using 0 as placeholder.
+const ANGLE_H_MAX = 298;
+// V: head joint mechanical design range is 0-180deg, but the only confirmed-safe limit so far is
+// ~58deg (jog test) - keep clamping/clickable/visual range at the confirmed value until re-tested
+// on-site, per PROJECT_CONTEXT.md TODO.
+const ANGLE_V_MAX = 58;
+
+// display-only estimates of the firmware-fixed motor speed (deg/s), used to glide the
+// canvas marker between sparse Position Query reports - calibrate against the real device.
+const PAN_DPS = 25;
+const TILT_DPS = 15;
+
+let ws = null;
+let waypoints = [];   // {h, v, laser}  h:0..ANGLE_H_MAX, v:0..ANGLE_V_MAX
+let playing = false;
+let playTimer = null;
+let mode = "click";   // "click" | "free"
+let laserOn = false;     // indicator state (what was last commanded to the device)
+let manualLaser = false; // manual latch: user pressed Laser ON - playback must never turn it off
+
+// --- device position state during Play ---
+let sim = null;        // latest REPORTED device state: {hx, vy, laser}
+let simDisplay = null; // smoothed DISPLAYED pose {h, v}, glides toward sim at device-like speed
+let animId = null;
+let lastFrameT = 0;
+
+const canvas = document.getElementById("trackCanvas");
+const ctx = canvas.getContext("2d");
+
+// canvas fills whatever space its card has left (fit-to-screen layout, no page scroll) -
+// project()/screenToAngle() already read canvas.width/canvas.height live, so resizing the
+// backing buffer here keeps drawing and click math in sync automatically.
+function sizeCanvas() {
+  const wrap = canvas.parentElement;
+  const w = Math.max(260, Math.floor(wrap.clientWidth));
+  const h = Math.max(200, Math.floor(wrap.clientHeight));
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+  }
+}
+window.addEventListener("resize", () => { sizeCanvas(); drawCanvas(); });
+
+function log(msg) {
+  const el = document.getElementById("log");
+  const time = new Date().toLocaleTimeString();
+  el.textContent = `[${time}] ${msg}\n` + el.textContent;
+}
+// Version marker so it's obvious from the on-screen log whether a phone/browser is showing this
+// build or a stale cached copy - bump the suffix whenever hmi.html changes.
+log("HMI build: responsive-fix-3 (2026-07-07)");
+
+function setStatus(connected) {
+  const el = document.getElementById("status");
+  el.className = connected ? "ok" : "bad";
+  el.textContent = connected ? "Bridge connected, device online" : "Bridge/device not connected";
+}
+
+function connect() {
+  ws = new WebSocket(WS_URL);
+  ws.onopen = () => log("WebSocket connected to bridge");
+  ws.onclose = () => { setStatus(false); log("WebSocket closed, retrying..."); setTimeout(connect, 2000); };
+  ws.onerror = () => setStatus(false);
+  ws.onmessage = (ev) => {
+    let msg;
+    try { msg = JSON.parse(ev.data); } catch { return; }
+    if (msg.type === "status") setStatus(!!msg.deviceConnected);
+    if (msg.type === "error") log("Error: " + msg.message);
+    if (msg.type === "position" || msg.type === "arrived") onPositionUpdate(msg);
+  };
+}
+connect();
+
+function sendCommand(action, params) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) { log("Bridge not connected, cannot send " + action); return; }
+  ws.send(JSON.stringify(Object.assign({ type: "command", action }, params || {})));
+}
+
+// --- manual jog ---
+// Pointer Events (not mouse-only) so press-and-hold works on touch too. releasePointerCapture
+// keeps the mouseleave-style "slide off the button = stop" fail-safe working for touch as well
+// (touch pointers implicitly capture to their target element by spec, which would otherwise
+// suppress pointerleave while a finger slides off mid-hold).
+document.querySelectorAll(".jog button").forEach(btn => {
+  btn.addEventListener("pointerdown", (e) => {
+    try { btn.releasePointerCapture(e.pointerId); } catch {}
+    sendCommand(btn.dataset.action);
+  });
+  btn.addEventListener("pointerup", () => { if (btn.dataset.action !== "stop") sendCommand("stop"); });
+  btn.addEventListener("pointercancel", () => { if (btn.dataset.action !== "stop") sendCommand("stop"); });
+  btn.addEventListener("pointerleave", () => { if (btn.dataset.action !== "stop") sendCommand("stop"); });
+});
+
+// --- laser: manual buttons latch the state (playback never overrides a manual ON) ---
+function setLaser(on) {
+  manualLaser = on;
+  laserOn = on;
+  const el = document.getElementById("laserState");
+  el.textContent = on ? "ON" : "OFF";
+  el.className = on ? "on" : "";
+  sendCommand(on ? "laser-on" : "laser-off");
+  if (sim) { sim = { ...sim, laser: on }; drawCanvas(); }
+  log("Laser " + (on ? "ON (latch manual)" : "OFF (manual)"));
+}
+document.getElementById("laserOnBtn").addEventListener("click", () => setLaser(true));
+document.getElementById("laserOffBtn").addEventListener("click", () => setLaser(false));
+
+// --- device model: fixed base, pan body rotating 0..ANGLE_H_MAX around the vertical axis,
+// laser head tilting 0..ANGLE_V_MAX on a horizontal joint sitting on top of the body.
+// H/V here mirror the real joints in the reference photo: blue arrow = pan body, green
+// arrow = tilt joint, red arrow = laser head, yellow arrow = static base. ---
+function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
+
+const BASE_H = 26;    // base box height (world units)
+const BODY_W = 30, BODY_D = 34, BODY_H = 46; // pan body box size
+const HEAD_LEN = 64, HEAD_W = 26, HEAD_H = 26; // laser head box size (length = aim direction)
+const PIVOT_Y = BASE_H + BODY_H; // height of the tilt joint above the ground
+let viewYaw = 0.6;    // camera orbit angle around the dome (radians)
+let viewPitch = 0.45; // camera elevation angle (radians)
+const viewDist = 430;
+
+// rotate point p by `deg` degrees around the Y axis
+function rotY(p, deg) {
+  const a = (deg / 180) * Math.PI;
+  return { x: p.x * Math.cos(a) + p.z * Math.sin(a), y: p.y, z: -p.x * Math.sin(a) + p.z * Math.cos(a) };
+}
+// rotate point p by `deg` degrees around the X axis (tilt joint axis)
+function rotX(p, deg) {
+  const a = (deg / 180) * Math.PI;
+  return { x: p.x, y: p.y * Math.cos(a) - p.z * Math.sin(a), z: p.y * Math.sin(a) + p.z * Math.cos(a) };
+}
+function addv(a, b) { return { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z }; }
+
+// angle (h,v) on the device -> 3D point at the tip of the laser head (where it's aiming)
+function angleToVec3(h, v) {
+  const local = rotX({ x: 0, y: 0, z: HEAD_LEN }, -v); // tilt up around the joint, pointing +Z at v=0
+  const world = rotY(local, h); // pan around the vertical axis
+  return addv(world, { x: 0, y: PIVOT_Y, z: 0 });
+}
+// inverse: 3D point relative to the pivot -> (h, v), clamped to the reachable sector
+function vec3ToAngle(p) {
+  const rel = { x: p.x, y: p.y - PIVOT_Y, z: p.z };
+  let h = (Math.atan2(rel.x, rel.z) / Math.PI) * 180;
+  if (h < 0) h += 360;
+  const horiz = Math.hypot(rel.x, rel.z);
+  let v = (Math.atan2(rel.y, horiz) / Math.PI) * 180;
+  return { h: clamp(Math.round(h), 0, ANGLE_H_MAX), v: clamp(Math.round(v), 0, ANGLE_V_MAX) };
+}
+
+// rotate a 3D point by the current camera yaw/pitch, then project to 2D screen space
+function project(p) {
+  // rotate around Y (yaw)
+  let x = p.x * Math.cos(viewYaw) - p.z * Math.sin(viewYaw);
+  let z = p.x * Math.sin(viewYaw) + p.z * Math.cos(viewYaw);
+  let y = p.y;
+  // rotate around X (pitch)
+  const y2 = y * Math.cos(viewPitch) - z * Math.sin(viewPitch);
+  const z2 = y * Math.sin(viewPitch) + z * Math.cos(viewPitch);
+  y = y2; z = z2;
+  // simple perspective
+  const camZ = viewDist;
+  const f = camZ / (camZ - z);
+  return {
+    x: canvas.width / 2 + x * f,
+    y: canvas.height / 2 - y * f,
+    depth: z,
+    scale: f,
+  };
+}
+
+// inverse: screen click -> ray from camera through that pixel -> intersect the head-tip
+// sphere (radius HEAD_LEN, centered at the tilt pivot) -> angle
+function screenToAngle(px, py) {
+  const camZ = viewDist;
+  // unproject: pick a point on the "f=1" plane (z=0 in rotated space) matching screen coords,
+  // then raycast from the (rotated-space) camera position through it onto the sphere.
+  const sx = px - canvas.width / 2;
+  const sy = canvas.height / 2 - py;
+  // camera sits at (0,0,camZ) in rotated space looking toward origin
+  const dirRot = { x: sx, y: sy, z: -camZ };
+  const len = Math.hypot(dirRot.x, dirRot.y, dirRot.z);
+  const d = { x: dirRot.x / len, y: dirRot.y / len, z: dirRot.z / len };
+  const o = { x: 0, y: 0, z: camZ };
+  // sphere center (the tilt pivot) in rotated/camera space
+  const centerWorld = { x: 0, y: PIVOT_Y, z: 0 };
+  let cx = centerWorld.x * Math.cos(viewYaw) - centerWorld.z * Math.sin(viewYaw);
+  let cz = centerWorld.x * Math.sin(viewYaw) + centerWorld.z * Math.cos(viewYaw);
+  let cy = centerWorld.y * Math.cos(viewPitch) - cz * Math.sin(viewPitch);
+  cz = centerWorld.y * Math.sin(viewPitch) + cz * Math.cos(viewPitch);
+  const oc = { x: o.x - cx, y: o.y - cy, z: o.z - cz };
+  // ray-sphere intersection (sphere radius HEAD_LEN at the pivot), take nearest hit
+  const b = 2 * (oc.x * d.x + oc.y * d.y + oc.z * d.z);
+  const c = oc.x * oc.x + oc.y * oc.y + oc.z * oc.z - HEAD_LEN * HEAD_LEN;
+  const disc = b * b - 4 * c;
+  if (disc < 0) return null; // missed the head's reach sphere
+  const t = (-b - Math.sqrt(disc)) / 2;
+  if (t <= 0) return null;
+  const hit = { x: o.x + d.x * t, y: o.y + d.y * t, z: o.z + d.z * t };
+  // un-rotate the hit point (inverse of pitch then yaw) back to device-space coords
+  let y = hit.y * Math.cos(-viewPitch) - hit.z * Math.sin(-viewPitch);
+  let z = hit.y * Math.sin(-viewPitch) + hit.z * Math.cos(-viewPitch);
+  let x = hit.x * Math.cos(-viewYaw) - z * Math.sin(-viewYaw);
+  z = hit.x * Math.sin(-viewYaw) + z * Math.cos(-viewYaw);
+  return vec3ToAngle({ x, y, z });
+}
+
+// axis-aligned box (half-extents w/h/d) centered at `center`, optionally panned by `panDeg`
+// and tilted by `tiltDeg` (tilt rotates around the box's own near edge, like the head joint)
+function boxVerts(center, hw, hh, hd, panDeg, tiltDeg, pivotY) {
+  const corners = [];
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
+    corners.push({ x: sx * hw, y: sy * hh, z: sz * hd });
+  }
+  return corners.map(c => {
+    let p = addv(c, center);
+    if (tiltDeg !== undefined) {
+      p = { x: p.x, y: p.y - pivotY, z: p.z };
+      p = rotX(p, -tiltDeg);
+      p = { x: p.x, y: p.y + pivotY, z: p.z };
+    }
+    if (panDeg !== undefined) p = rotY(p, panDeg);
+    return p;
+  });
+}
+// pose to draw: smoothed device pose while playing, else last waypoint, else home
+function displayPose() {
+  if (simDisplay) return { h: simDisplay.h, v: simDisplay.v };
+  if (sim) return { h: sim.hx, v: sim.vy };
+  if (waypoints.length) {
+    const w = waypoints[waypoints.length - 1];
+    return { h: w.h, v: w.v };
+  }
+  return { h: 0, v: 0 };
+}
+
+// glide simDisplay toward the latest reported position at device-like angular speed,
+// so the marker never teleports even when Position Query reports are sparse
+function stepAnim(t) {
+  animId = null;
+  if (!sim) return;
+  if (!simDisplay) simDisplay = { h: sim.hx, v: sim.vy };
+  const dt = lastFrameT ? Math.min((t - lastFrameT) / 1000, 0.1) : 0.016;
+  lastFrameT = t;
+  const moveToward = (cur, tgt, maxStep) => {
+    const d = tgt - cur;
+    return Math.abs(d) <= maxStep ? tgt : cur + Math.sign(d) * maxStep;
+  };
+  simDisplay = {
+    h: moveToward(simDisplay.h, sim.hx, PAN_DPS * dt),
+    v: moveToward(simDisplay.v, sim.vy, TILT_DPS * dt),
+  };
+  drawCanvas();
+  if (Math.abs(simDisplay.h - sim.hx) > 0.05 || Math.abs(simDisplay.v - sim.vy) > 0.05) {
+    animId = requestAnimationFrame(stepAnim);
+  } else {
+    lastFrameT = 0;
+  }
+}
+function kickAnim() {
+  if (animId === null) {
+    lastFrameT = 0;
+    animId = requestAnimationFrame(stepAnim);
+  }
+}
+
+const BOX_EDGES = [[0,1],[0,2],[0,4],[1,3],[1,5],[2,3],[2,6],[3,7],[4,5],[4,6],[5,7],[6,7]];
+function drawBox(verts, color) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.3;
+  const proj = verts.map(project);
+  for (const [a, b] of BOX_EDGES) {
+    ctx.beginPath();
+    ctx.moveTo(proj[a].x, proj[a].y);
+    ctx.lineTo(proj[b].x, proj[b].y);
+    ctx.stroke();
+  }
+}
+
+function drawCanvas() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // pose being displayed: smoothed device position when playing, else last waypoint
+  const pose = displayPose();
+  const h = pose.h, v = pose.v;
+  const laserLit = sim ? sim.laser : false;
+
+  // baseplate (yellow arrow in reference photo): wide flat plate, static, never moves
+  const PLATE_W = BODY_W * 1.5, PLATE_D = BODY_D * 1.5, PLATE_H = 8;
+  const plateVerts = boxVerts({ x: 0, y: PLATE_H / 2, z: 0 }, PLATE_W / 2, PLATE_H / 2, PLATE_D / 2);
+  drawBox(plateVerts, "#8a6a4a");
+  // plate orientation arrow pointing to H=0 (pan reference direction)
+  const arrowFrom = project({ x: 0, y: PLATE_H + 1, z: PLATE_D / 2 });
+  const arrowTo = project({ x: 0, y: PLATE_H + 1, z: PLATE_D / 2 + 22 });
+  ctx.strokeStyle = "#8a6a4a";
+  ctx.fillStyle = "#8a6a4a";
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(arrowFrom.x, arrowFrom.y); ctx.lineTo(arrowTo.x, arrowTo.y); ctx.stroke();
+  ctx.beginPath(); ctx.arc(arrowTo.x, arrowTo.y, 3, 0, Math.PI * 2); ctx.fill();
+  ctx.font = "11px system-ui";
+  ctx.fillText("0°", arrowTo.x + 6, arrowTo.y + 4);
+
+  // pedestal riser between plate and pan body
+  const riserVerts = boxVerts({ x: 0, y: PLATE_H + (BASE_H - PLATE_H) / 2, z: 0 }, BODY_W * 0.45, (BASE_H - PLATE_H) / 2, BODY_D * 0.45);
+  drawBox(riserVerts, "#8a6a4a");
+
+  // pan body (blue arrow): rotates 0..ANGLE_H_MAX around Y, sits on the base
+  const bodyVerts = boxVerts({ x: 0, y: BASE_H + BODY_H / 2, z: 0 }, BODY_W / 2, BODY_H / 2, BODY_D / 2, h);
+  drawBox(bodyVerts, "#3a6ea5");
+
+  // laser head (red/green arrow): tilts 0..ANGLE_V_MAX on the joint on top of the body, then pans with it
+  const headVerts = boxVerts({ x: 0, y: PIVOT_Y, z: HEAD_LEN / 2 }, HEAD_W / 2, HEAD_H / 2, HEAD_LEN / 2, h, v, PIVOT_Y);
+  ctx.lineWidth = 1.8;
+  drawBox(headVerts, laserLit ? "#d22" : "#5a6673");
+
+  // head front: laser aperture dot at the tip + short aim ray so the "muzzle" side is obvious
+  const tip = angleToVec3(h, v);
+  const tipP = project(tip);
+  const dir = { x: (tip.x - 0) / HEAD_LEN, y: (tip.y - PIVOT_Y) / HEAD_LEN, z: (tip.z - 0) / HEAD_LEN };
+  const rayEnd = project(addv(tip, { x: dir.x * 26, y: dir.y * 26, z: dir.z * 26 }));
+  ctx.strokeStyle = laserLit ? "#e33" : "#98a4b0";
+  ctx.lineWidth = laserLit ? 2.5 : 1.5;
+  ctx.beginPath(); ctx.moveTo(tipP.x, tipP.y); ctx.lineTo(rayEnd.x, rayEnd.y); ctx.stroke();
+  ctx.fillStyle = laserLit ? "#e33" : "#5a6673";
+  ctx.beginPath(); ctx.arc(tipP.x, tipP.y, 4, 0, Math.PI * 2); ctx.fill();
+
+  // reachable pan sweep arc at the pivot height, from 0 to ANGLE_H_MAX (not a full circle)
+  ctx.strokeStyle = "#9fb0c0";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let hh = 0; hh <= ANGLE_H_MAX; hh += 4) {
+    const p = project(angleToVec3(hh, 0));
+    if (hh === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+  }
+  ctx.stroke();
+  // ticks + labels at both ends of the pan range
+  ctx.fillStyle = "#5a6673";
+  ctx.font = "10px system-ui";
+  const tick0 = project(angleToVec3(0, 0));
+  const tickMax = project(angleToVec3(ANGLE_H_MAX, 0));
+  ctx.beginPath(); ctx.arc(tick0.x, tick0.y, 2.5, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(tickMax.x, tickMax.y, 2.5, 0, Math.PI * 2); ctx.fill();
+  ctx.fillText("H0°", tick0.x + 5, tick0.y - 4);
+  ctx.fillText(`H${ANGLE_H_MAX}°`, tickMax.x + 5, tickMax.y - 4);
+  // reachable tilt sweep arc at h=0, from 0 to ANGLE_V_MAX
+  ctx.strokeStyle = "#9fb0c0";
+  ctx.beginPath();
+  for (let vv = 0; vv <= ANGLE_V_MAX; vv += 4) {
+    const p = project(angleToVec3(0, vv));
+    if (vv === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+  }
+  ctx.stroke();
+  const tickV = project(angleToVec3(0, ANGLE_V_MAX));
+  ctx.fillStyle = "#5a6673";
+  ctx.beginPath(); ctx.arc(tickV.x, tickV.y, 2.5, 0, Math.PI * 2); ctx.fill();
+  ctx.fillText(`V${ANGLE_V_MAX}°`, tickV.x + 5, tickV.y - 4);
+
+  // device marker at ground origin
+  const center = project({ x: 0, y: 0, z: 0 });
+  ctx.fillStyle = "#8a95a1";
+  ctx.beginPath(); ctx.arc(center.x, center.y, 4, 0, Math.PI * 2); ctx.fill();
+
+  // path lines (great-circle-ish: just connect projected waypoints along the surface samples)
+  if (waypoints.length > 1) {
+    ctx.strokeStyle = "#4a7aaa";
+    ctx.lineWidth = 2;
+    for (let i = 0; i < waypoints.length - 1; i++) {
+      drawSurfaceArc(waypoints[i], waypoints[i + 1]);
+    }
+  }
+
+  // waypoints (sorted back-to-front so nearer ones draw on top)
+  const wpProjected = waypoints.map((w, i) => ({ w, i, p: project(angleToVec3(w.h, w.v)) }));
+  wpProjected.sort((a, b) => a.p.depth - b.p.depth);
+  wpProjected.forEach(({ w, i, p }) => {
+    ctx.fillStyle = w.laser ? "#d22" : "#7a8694";
+    ctx.beginPath(); ctx.arc(p.x, p.y, 6 * p.scale, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#38424e";
+    ctx.font = "10px system-ui";
+    ctx.fillText(String(i + 1), p.x + 8, p.y - 6);
+  });
+
+  // laser position marker (smoothed toward the real device position)
+  if (sim) {
+    const p = project(angleToVec3(h, v));
+    if (sim.laser) {
+      const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 16);
+      grad.addColorStop(0, "rgba(230,40,40,0.85)");
+      grad.addColorStop(1, "rgba(230,40,40,0)");
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 16, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.fillStyle = sim.laser ? "#e01f1f" : "#2a6fd1";
+    ctx.beginPath(); ctx.arc(p.x, p.y, 7, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "#1a232e";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 7, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = "#1a232e";
+    ctx.font = "11px system-ui";
+    ctx.fillText(`H${h.toFixed(0)} V${v.toFixed(0)}`, p.x + 10, p.y + 4);
+  }
+}
+
+function drawSurfaceArc(a, b) {
+  const steps = 16;
+  ctx.beginPath();
+  for (let s = 0; s <= steps; s++) {
+    const t = s / steps;
+    const h = a.h + (b.h - a.h) * t;
+    const v = a.v + (b.v - a.v) * t;
+    const p = project(angleToVec3(h, v));
+    if (s === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+  }
+  ctx.stroke();
+}
+
+function hitTest(px, py) {
+  for (let i = waypoints.length - 1; i >= 0; i--) {
+    const p = project(angleToVec3(waypoints[i].h, waypoints[i].v));
+    if (Math.hypot(p.x - px, p.y - py) <= 9) return i;
+  }
+  return -1;
+}
+
+let dragIdx = -1;
+let freeDrawing = false;
+let lastFreePoint = null;
+let orbiting = false;
+let lastOrbit = null;
+
+// Touch has no Shift/Alt modifier keys, so orbit-vs-aim is disambiguated by finger count:
+// two fingers = orbit camera (mirrors mouse's shift/alt/middle-drag), one finger = the same
+// aim/drag/freehand gesture mouse already does. Waypoint delete uses a long-press (touch's
+// answer to right-click, since there's no contextmenu event on a tap).
+const activePointers = new Map(); // pointerId -> {x, y}
+let longPressTimer = null;
+let longPressStart = null;
+const LONG_PRESS_MS = 500;
+const LONG_PRESS_MOVE_TOLERANCE = 10;
+
+function orbitMidpoint() {
+  const pts = [...activePointers.values()];
+  return { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+}
+
+function clearLongPress() {
+  if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+  longPressStart = null;
+}
+
+function tryLongPressDelete(px, py) {
+  const idx = hitTest(px, py);
+  if (idx >= 0) {
+    waypoints.splice(idx, 1);
+    dragIdx = -1;
+    renderAll();
+    if (navigator.vibrate) navigator.vibrate(15);
+  }
+}
+
+canvas.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  const r = canvas.getBoundingClientRect();
+  const idx = hitTest(e.clientX - r.left, e.clientY - r.top);
+  if (idx >= 0) { waypoints.splice(idx, 1); renderAll(); }
+});
+
+canvas.addEventListener("pointerdown", (e) => {
+  if (e.button === 2) return; // handled by contextmenu
+  canvas.setPointerCapture(e.pointerId);
+  activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+  if (activePointers.size === 2) {
+    // second finger landing always wins: cancel whatever the first finger was mid-doing and orbit
+    dragIdx = -1; freeDrawing = false; lastFreePoint = null;
+    clearLongPress();
+    orbiting = true;
+    lastOrbit = orbitMidpoint();
+    return;
+  }
+  if (activePointers.size > 2) return; // ignore a third finger
+
+  const r = canvas.getBoundingClientRect();
+  const px = e.clientX - r.left, py = e.clientY - r.top;
+
+  if (e.button === 1 || e.shiftKey || e.altKey) { // middle-click, shift+drag or alt+drag: orbit
+    orbiting = true; lastOrbit = { x: e.clientX, y: e.clientY };
+    return;
+  }
+  if (mode === "click") {
+    const idx = hitTest(px, py);
+    if (idx >= 0) { dragIdx = idx; }
+    else {
+      const a = screenToAngle(px, py);
+      if (a) { waypoints.push({ h: a.h, v: a.v, laser: manualLaser }); renderAll(); }
+    }
+  } else {
+    freeDrawing = true;
+    lastFreePoint = null;
+    addFreePoint(px, py);
+  }
+
+  if (e.pointerType !== "mouse") {
+    longPressStart = { x: px, y: py };
+    longPressTimer = setTimeout(() => { tryLongPressDelete(px, py); longPressTimer = null; }, LONG_PRESS_MS);
+  }
+});
+
+canvas.addEventListener("pointermove", (e) => {
+  if (!activePointers.has(e.pointerId)) return;
+  activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+  if (longPressStart) {
+    const r = canvas.getBoundingClientRect();
+    const px = e.clientX - r.left, py = e.clientY - r.top;
+    if (Math.hypot(px - longPressStart.x, py - longPressStart.y) > LONG_PRESS_MOVE_TOLERANCE) clearLongPress();
+  }
+
+  if (orbiting && activePointers.size === 2) {
+    const mid = orbitMidpoint();
+    viewYaw += (mid.x - lastOrbit.x) * 0.008;
+    viewPitch = clamp(viewPitch - (mid.y - lastOrbit.y) * 0.008, -1.4, 1.4);
+    lastOrbit = mid;
+    drawCanvas();
+    return;
+  }
+  if (orbiting && lastOrbit) {
+    viewYaw += (e.clientX - lastOrbit.x) * 0.008;
+    viewPitch = clamp(viewPitch - (e.clientY - lastOrbit.y) * 0.008, -1.4, 1.4);
+    lastOrbit = { x: e.clientX, y: e.clientY };
+    drawCanvas();
+    return;
+  }
+
+  const r = canvas.getBoundingClientRect();
+  const px = e.clientX - r.left, py = e.clientY - r.top;
+  if (mode === "click" && dragIdx >= 0) {
+    const a = screenToAngle(px, py);
+    if (a) { waypoints[dragIdx].h = a.h; waypoints[dragIdx].v = a.v; renderAll(); }
+  } else if (mode === "free" && freeDrawing) {
+    addFreePoint(px, py);
+  }
+});
+
+canvas.addEventListener("wheel", (e) => {
+  e.preventDefault();
+}, { passive: false });
+
+function endPointer(e) {
+  activePointers.delete(e.pointerId);
+  clearLongPress();
+  if (activePointers.size < 2) { orbiting = false; lastOrbit = null; }
+  dragIdx = -1; freeDrawing = false; lastFreePoint = null;
+}
+window.addEventListener("pointerup", endPointer);
+window.addEventListener("pointercancel", endPointer);
+
+function addFreePoint(px, py) {
+  if (lastFreePoint && Math.hypot(px - lastFreePoint.x, py - lastFreePoint.y) < 18) return;
+  lastFreePoint = { x: px, y: py };
+  const a = screenToAngle(px, py);
+  if (!a) return;
+  waypoints.push({ h: a.h, v: a.v, laser: manualLaser });
+  renderAll();
+}
+
+// --- mode toggle ---
+document.getElementById("modeClickBtn").addEventListener("click", () => {
+  mode = "click";
+  document.getElementById("modeClickBtn").classList.add("active");
+  document.getElementById("modeFreeBtn").classList.remove("active");
+});
+document.getElementById("modeFreeBtn").addEventListener("click", () => {
+  mode = "free";
+  document.getElementById("modeFreeBtn").classList.add("active");
+  document.getElementById("modeClickBtn").classList.remove("active");
+});
+
+document.getElementById("undoBtn").addEventListener("click", () => { waypoints.pop(); renderAll(); });
+document.getElementById("clearCanvasBtn").addEventListener("click", () => {
+  if (playing) stopPlay(false);
+  waypoints = []; sim = null; renderAll();
+});
+
+// --- table ---
+function renderTable() {
+  const tbody = document.getElementById("routeRows");
+  tbody.innerHTML = "";
+  waypoints.forEach((w, i) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td class="stepnum">${i + 1}</td><td>${w.h}</td><td>${w.v}</td>` +
+      `<td><span class="badge ${w.laser ? "badge-on" : "badge-off"}">${w.laser ? "ON" : "off"}</span></td><td></td>`;
+    const tdDel = tr.querySelector("td:last-child");
+    const delBtn = document.createElement("button");
+    delBtn.className = "std";
+    delBtn.textContent = "✕";
+    delBtn.addEventListener("click", () => { waypoints.splice(i, 1); renderAll(); });
+    tdDel.appendChild(delBtn);
+    tbody.appendChild(tr);
+  });
+}
+
+function renderAll() { drawCanvas(); renderTable(); }
+
+// --- playback: marker follows the device's REAL position, reported live by the bridge ---
+// Flow: send goto-angle for current waypoint -> bridge polls Position Query and streams
+// {type:"position"} updates while traveling -> {type:"arrived"} when within tolerance ->
+// dwell locally for dwellMs -> advance to next waypoint.
+let playTarget = -1; // index of waypoint currently targeted (-1 when idle)
+
+function setLaserIndicator(on) {
+  laserOn = on;
+  const el = document.getElementById("laserState");
+  el.textContent = on ? "ON" : "OFF";
+  el.className = on ? "on" : "";
+}
+
+function nextIndex(i) {
+  if (i + 1 < waypoints.length) return i + 1;
+  return document.getElementById("loopChk").checked ? 0 : -1;
+}
+
+function goToWaypoint(idx) {
+  playTarget = idx;
+  const w = waypoints[idx];
+  const want = manualLaser || w.laser; // manual latch: never let a waypoint force the laser off
+  log(`Goto #${idx + 1}: H=${w.h} V=${w.v}`);
+  sendCommand(want ? "laser-on" : "laser-off");
+  setLaserIndicator(want);
+  sendCommand("goto-angle", { h: w.h, v: w.v });
+}
+
+function onPositionUpdate(msg) {
+  sim = { hx: msg.h, vy: msg.v, laser: sim ? sim.laser : laserOn };
+  kickAnim(); // marker glides toward the new reported position instead of teleporting
+
+  if (msg.type === "arrived" && playing && playTarget >= 0) {
+    const w = waypoints[playTarget];
+    const want = manualLaser || w.laser;
+    sendCommand(want ? "laser-on" : "laser-off");
+    setLaserIndicator(want);
+    sim = { ...sim, laser: want };
+    drawCanvas();
+    const dwell = parseInt(document.getElementById("dwellMs").value, 10) || 0;
+    log(`Sampai #${playTarget + 1}, dwell ${dwell}ms`);
+    playTimer = setTimeout(() => {
+      if (!playing) return;
+      const ni = nextIndex(playTarget);
+      if (ni < 0) { stopPlay(true); return; }
+      goToWaypoint(ni);
+    }, dwell);
+  }
+}
+
+function startPlay() {
+  if (waypoints.length === 0) { log("Track kosong"); return; }
+  if (playing) return;
+  playing = true;
+  log("Mulai play track (mengikuti posisi asli device)");
+  goToWaypoint(0);
+}
+
+function stopPlay(finished) {
+  playing = false;
+  playTarget = -1;
+  clearTimeout(playTimer);
+  if (animId !== null) { cancelAnimationFrame(animId); animId = null; }
+  sendCommand("stop");
+  if (manualLaser) {
+    log("Laser tetap ON (latch manual, matikan lewat tombol Laser OFF)");
+  } else if (laserOn) {
+    // laser was on only because of a waypoint flag - return to idle-off
+    sendCommand("laser-off");
+    setLaserIndicator(false);
+    if (sim) { sim = { ...sim, laser: false }; drawCanvas(); }
+  }
+  log(finished ? "Track selesai" : "Track dihentikan");
+}
+
+document.getElementById("playBtn").addEventListener("click", startPlay);
+document.getElementById("stopPlayBtn").addEventListener("click", () => stopPlay(false));
+
+// --- save / load ---
+document.getElementById("saveBtn").addEventListener("click", () => {
+  const blob = new Blob([JSON.stringify(waypoints, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "track.json";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+function parseTrackJSON(raw) {
+  const data = JSON.parse(raw);
+  if (!Array.isArray(data)) throw new Error("bukan array");
+  return data.map(w => ({ h: clamp(+w.h || 0, 0, ANGLE_H_MAX), v: clamp(+w.v || 0, 0, ANGLE_V_MAX), laser: !!w.laser }));
+}
+
+document.getElementById("loadBtn").addEventListener("click", () => document.getElementById("fileInput").click());
+document.getElementById("fileInput").addEventListener("change", (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      waypoints = parseTrackJSON(reader.result);
+      renderAll();
+      log("Track loaded: " + waypoints.length + " titik");
+    } catch (err) { log("Gagal parse file: " + err.message); }
+  };
+  reader.readAsText(f);
+  e.target.value = "";
+});
+
+// --- jadwal otomatis: tiap entri = {id, start:"HH:MM", end:"HH:MM", track, filename, enabled, lastStartDate} ---
+// Play dipicu saat jam lokal browser == start (sekali per hari), stop saat == end.
+// Butuh tab/browser tetap terbuka - ini scheduler sisi client, bukan cron di server.js.
+const SCHEDULE_STORE_KEY = "sinso-ptz-schedules";
+let schedules = [];
+let scheduleIdSeq = 1;
+let activeScheduleId = null;
+
+function saveSchedules() {
+  try { localStorage.setItem(SCHEDULE_STORE_KEY, JSON.stringify(schedules)); } catch { /* storage unavailable/full - schedules still work this session */ }
+}
+function loadSchedules() {
+  try {
+    const raw = localStorage.getItem(SCHEDULE_STORE_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (!Array.isArray(data)) return;
+    schedules = data;
+    scheduleIdSeq = schedules.reduce((max, s) => Math.max(max, s.id || 0), 0) + 1;
+  } catch { /* corrupt/old data - start fresh */ }
+}
+
+function renderSchedules() {
+  const box = document.getElementById("scheduleList");
+  box.innerHTML = "";
+  if (schedules.length === 0) {
+    box.innerHTML = '<div class="schedule-empty">Belum ada jadwal. Atur jam mulai/berhenti lalu upload track.json.</div>';
+    return;
+  }
+  schedules.forEach(s => {
+    const row = document.createElement("div");
+    row.className = "schedule-item" + (activeScheduleId === s.id ? " active" : "");
+    row.innerHTML =
+      `<span class="schedule-time">${s.start}&ndash;${s.end}</span>` +
+      `<span class="schedule-meta">` +
+        `<div class="schedule-file"></div>` +
+        `<div class="schedule-points">${s.track.length} titik${activeScheduleId === s.id ? ' &bull; <span class="schedule-running">Berjalan</span>' : ""}</div>` +
+      `</span>`;
+    row.querySelector(".schedule-file").textContent = s.filename;
+    const toggle = document.createElement("label");
+    toggle.className = "toggle";
+    toggle.title = s.enabled ? "Aktif" : "Nonaktif";
+    toggle.innerHTML = `<input type="checkbox" ${s.enabled ? "checked" : ""}><span class="toggle-track"><span class="toggle-thumb"></span></span>`;
+    toggle.querySelector("input").addEventListener("change", (e) => { s.enabled = e.target.checked; saveSchedules(); log(`Jadwal ${s.start}-${s.end} ${s.enabled ? "diaktifkan" : "dinonaktifkan"}`); });
+    row.appendChild(toggle);
+    const delBtn = document.createElement("button");
+    delBtn.className = "std";
+    delBtn.textContent = "✕";
+    delBtn.title = "Hapus jadwal";
+    delBtn.addEventListener("click", () => {
+      schedules = schedules.filter(x => x.id !== s.id);
+      if (activeScheduleId === s.id) activeScheduleId = null;
+      saveSchedules();
+      renderSchedules();
+      log(`Jadwal ${s.start}-${s.end} dihapus`);
+    });
+    row.appendChild(delBtn);
+    box.appendChild(row);
+  });
+}
+
+document.getElementById("schedUploadBtn").addEventListener("click", () => document.getElementById("schedFileInput").click());
+document.getElementById("schedFileInput").addEventListener("change", (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const start = document.getElementById("schedStart").value || "06:00";
+  const end = document.getElementById("schedEnd").value || "18:00";
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const track = parseTrackJSON(reader.result);
+      schedules.push({ id: scheduleIdSeq++, start, end, track, filename: f.name, enabled: true, lastStartDate: null });
+      saveSchedules();
+      renderSchedules();
+      log(`Jadwal ditambah: ${start}-${end} (${f.name}, ${track.length} titik)`);
+    } catch (err) { log("Gagal parse track.json untuk jadwal: " + err.message); }
+  };
+  reader.readAsText(f);
+  e.target.value = "";
+});
+
+function checkSchedules() {
+  if (!schedules.length) return;
+  const now = new Date();
+  const hm = now.toTimeString().slice(0, 5);
+  const todayStr = now.toDateString();
+
+  schedules.forEach(s => {
+    if (!s.enabled) return;
+    if (s.lastStartDate !== todayStr && hm === s.start) {
+      s.lastStartDate = todayStr;
+      saveSchedules();
+      activeScheduleId = s.id;
+      waypoints = s.track.map(w => ({ ...w }));
+      renderAll();
+      renderSchedules();
+      log(`Jadwal "${s.filename}" mulai (${s.start}) - laser ON`);
+      setLaser(true); // latch: laser tetap ON sepanjang jadwal berjalan, terlepas dari flag per-waypoint di track
+      startPlay();
+    }
+    if (activeScheduleId === s.id && hm === s.end) {
+      log(`Jadwal "${s.filename}" berhenti (${s.end}) - laser OFF`);
+      setLaser(false); // lepas latch dulu supaya stopPlay() tidak mengira ini laser manual yang harus dibiarkan menyala
+      stopPlay(true);
+      activeScheduleId = null;
+      renderSchedules();
+    }
+  });
+}
+setInterval(checkSchedules, 10000);
+
+loadSchedules();
+renderSchedules();
+sizeCanvas();
+renderAll();
+</script>
+</body>
+</html>

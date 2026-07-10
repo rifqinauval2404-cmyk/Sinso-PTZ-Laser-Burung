@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>Sinso Path Builder</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 16px; background: #1e1e1e; color: #ddd; }
+  h1 { font-size: 18px; }
+  .bar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+  button { background: #333; color: #eee; border: 1px solid #555; padding: 6px 12px; cursor: pointer; border-radius: 4px; }
+  button:hover { background: #444; }
+  input[type=file] { color: #ddd; }
+  input[type=text] { background: #2a2a2a; color: #eee; border: 1px solid #555; border-radius: 3px; padding: 3px 6px; width: 80px; }
+  select { background: #2a2a2a; color: #eee; border: 1px solid #555; border-radius: 3px; padding: 3px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { border: 1px solid #444; padding: 4px 6px; text-align: center; }
+  th { background: #2a2a2a; position: sticky; top: 0; }
+  tr.disabled { opacity: 0.4; }
+  .ch { font-weight: bold; }
+  #status { font-size: 12px; color: #9c9; min-height: 16px; }
+  #pathPreview { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; padding: 8px; background: #252525; border-radius: 6px; min-height: 36px; }
+  .chip { background: #2d4f2d; border: 1px solid #4a7a4a; border-radius: 14px; padding: 4px 10px; font-size: 12px; white-space: nowrap; }
+  .chip b { color: #9f9; }
+  .arrow { align-self: center; color: #777; }
+  .tablewrap { max-height: 70vh; overflow-y: auto; }
+  .ipbox { display: flex; gap: 6px; align-items: center; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<h1>Sinso Path Builder (321.ini / 322.ini / 123.ini)</h1>
+
+<div class="bar">
+  <label>Load 321.ini: <input type="file" id="file321" accept=".ini"></label>
+  <label>Load 322.ini: <input type="file" id="file322" accept=".ini"></label>
+  <button id="exportBtn">Export 321.ini + 322.ini</button>
+</div>
+
+<div class="ipbox">
+  <span>123.ini (device IP):</span>
+  <input type="text" id="ipField" value="192.168.1.60" style="width:160px">
+  <button id="exportIpBtn">Export 123.ini</button>
+</div>
+
+<div id="status"></div>
+
+<h3>Path preview (enabled channels, in order)</h3>
+<div id="pathPreview"></div>
+
+<div class="tablewrap">
+<table>
+  <thead>
+    <tr><th>Ch</th><th>Enabled</th><th>ON</th><th>OFF</th><th>Rotating Mode</th></tr>
+  </thead>
+  <tbody id="rows"></tbody>
+</table>
+</div>
+
+<script>
+const FULLWIDTH_COLON = new Uint8Array([0xA3, 0xBA]);
+const MODES = ["NO", "Rot-One", "Rot-Three", "Rot-Eight"];
+const N = 99;
+
+let channels = Array.from({length: N}, (_, i) => ({
+  idx: i,
+  on: "00:00:00",
+  off: "00:00:00",
+  mode: "NO",
+  enabled: false
+}));
+
+function pad2(n) { return String(n).padStart(2, "0"); }
+
+function bytesToLatin1String(bytes) {
+  let s = "";
+  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+  return s;
+}
+
+function parse321(bytes) {
+  const text = bytesToLatin1String(bytes);
+  const lines = text.split(/\r\n|\n/).filter(l => l.trim().length > 0);
+  const delim = bytesToLatin1String(FULLWIDTH_COLON);
+  const re = new RegExp(
+    "^(\\d{2}) ON" + delim + "(\\d{2}:\\d{2}:\\d{2})\\s+OFF" + delim +
+    "(\\d{2}:\\d{2}:\\d{2})\\s+Rotating Modes" + delim + "(\\S+)\\s*$"
+  );
+  const result = [];
+  for (const line of lines) {
+    const m = line.match(re);
+    if (!m) continue;
+    result.push({
+      idx: parseInt(m[1], 10),
+      on: m[2],
+      off: m[3],
+      mode: m[4]
+    });
+  }
+  return result;
+}
+
+function parse322(bytes) {
+  const text = bytesToLatin1String(bytes);
+  return text.split(/\r\n|\n/).filter(l => l.trim().length > 0).map(l => l.trim() === "True");
+}
+
+function applyParsed(parsed321, parsed322) {
+  for (const row of parsed321) {
+    if (row.idx >= 0 && row.idx < N) {
+      channels[row.idx].on = row.on;
+      channels[row.idx].off = row.off;
+      channels[row.idx].mode = row.mode;
+    }
+  }
+  if (parsed322) {
+    for (let i = 0; i < Math.min(parsed322.length, N); i++) {
+      channels[i].enabled = parsed322[i];
+    }
+  }
+  renderTable();
+  renderPreview();
+}
+
+function readFileAsBytes(file, cb) {
+  const reader = new FileReader();
+  reader.onload = () => cb(new Uint8Array(reader.result));
+  reader.readAsArrayBuffer(file);
+}
+
+document.getElementById("file321").addEventListener("change", (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  readFileAsBytes(f, (bytes) => {
+    const parsed = parse321(bytes);
+    applyParsed(parsed, null);
+    setStatus(`Loaded ${parsed.length} channels from 321.ini`);
+  });
+});
+
+document.getElementById("file322").addEventListener("change", (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  readFileAsBytes(f, (bytes) => {
+    const parsed = parse322(bytes);
+    applyParsed([], parsed);
+    setStatus(`Loaded ${parsed.length} enable-flags from 322.ini`);
+  });
+});
+
+function setStatus(msg) {
+  document.getElementById("status").textContent = msg;
+}
+
+function renderTable() {
+  const tbody = document.getElementById("rows");
+  tbody.innerHTML = "";
+  for (const ch of channels) {
+    const tr = document.createElement("tr");
+    if (!ch.enabled) tr.className = "disabled";
+
+    const tdIdx = document.createElement("td");
+    tdIdx.className = "ch";
+    tdIdx.textContent = pad2(ch.idx);
+    tr.appendChild(tdIdx);
+
+    const tdEnabled = document.createElement("td");
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = ch.enabled;
+    cb.addEventListener("change", () => { ch.enabled = cb.checked; tr.className = ch.enabled ? "" : "disabled"; renderPreview(); });
+    tdEnabled.appendChild(cb);
+    tr.appendChild(tdEnabled);
+
+    const tdOn = document.createElement("td");
+    const onInput = document.createElement("input");
+    onInput.type = "text";
+    onInput.value = ch.on;
+    onInput.pattern = "\\d{2}:\\d{2}:\\d{2}";
+    onInput.addEventListener("change", () => { if (validTime(onInput.value)) { ch.on = onInput.value; renderPreview(); } else { onInput.value = ch.on; } });
+    tdOn.appendChild(onInput);
+    tr.appendChild(tdOn);
+
+    const tdOff = document.createElement("td");
+    const offInput = document.createElement("input");
+    offInput.type = "text";
+    offInput.value = ch.off;
+    offInput.addEventListener("change", () => { if (validTime(offInput.value)) { ch.off = offInput.value; renderPreview(); } else { offInput.value = ch.off; } });
+    tdOff.appendChild(offInput);
+    tr.appendChild(tdOff);
+
+    const tdMode = document.createElement("td");
+    const sel = document.createElement("select");
+    for (const m of MODES) {
+      const opt = document.createElement("option");
+      opt.value = m;
+      opt.textContent = m;
+      if (m === ch.mode) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    sel.addEventListener("change", () => { ch.mode = sel.value; renderPreview(); });
+    tdMode.appendChild(sel);
+    tr.appendChild(tdMode);
+
+    tbody.appendChild(tr);
+  }
+}
+
+function validTime(v) {
+  return /^\d{2}:\d{2}:\d{2}$/.test(v);
+}
+
+function renderPreview() {
+  const container = document.getElementById("pathPreview");
+  container.innerHTML = "";
+  const enabledChannels = channels.filter(c => c.enabled);
+  if (enabledChannels.length === 0) {
+    container.textContent = "(no channels enabled)";
+    return;
+  }
+  enabledChannels.forEach((ch, i) => {
+    const chip = document.createElement("div");
+    chip.className = "chip";
+    chip.innerHTML = `<b>Ch${pad2(ch.idx)}</b> ${ch.on}&rarr;${ch.off} <i>${ch.mode}</i>`;
+    container.appendChild(chip);
+    if (i < enabledChannels.length - 1) {
+      const arrow = document.createElement("div");
+      arrow.className = "arrow";
+      arrow.textContent = "→";
+      container.appendChild(arrow);
+    }
+  });
+}
+
+function buildFile321Bytes() {
+  const delim = bytesToLatin1String(FULLWIDTH_COLON);
+  const lines = channels.map(ch =>
+    `${pad2(ch.idx)} ON${delim}${ch.on}   OFF${delim}${ch.off}   Rotating Modes${delim}${ch.mode}`
+  );
+  const text = lines.join("\r\n") + "\r\n";
+  const bytes = new Uint8Array(text.length);
+  for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i);
+  return bytes;
+}
+
+function buildFile322Bytes() {
+  const text = channels.map(ch => ch.enabled ? "True" : "False").join("\r\n") + "\r\n";
+  const bytes = new Uint8Array(text.length);
+  for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i);
+  return bytes;
+}
+
+function downloadBytes(bytes, filename) {
+  const blob = new Blob([bytes], { type: "application/octet-stream" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+document.getElementById("exportBtn").addEventListener("click", () => {
+  downloadBytes(buildFile321Bytes(), "321.ini");
+  downloadBytes(buildFile322Bytes(), "322.ini");
+  setStatus("Exported 321.ini + 322.ini");
+});
+
+document.getElementById("exportIpBtn").addEventListener("click", () => {
+  const ip = document.getElementById("ipField").value.trim();
+  const text = ip + "\r\n";
+  const bytes = new Uint8Array(text.length);
+  for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i);
+  downloadBytes(bytes, "123.ini");
+  setStatus(`Exported 123.ini with IP ${ip}`);
+});
+
+renderTable();
+renderPreview();
+</script>
+</body>
+</html>

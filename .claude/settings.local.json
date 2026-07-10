@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(\"/c/xampp/mysql/bin/mysql.exe\" -u root sinso_ptz -e \"DELETE FROM tracks WHERE id=1;\")",
+      "Bash(\"/c/xampp/mysql/bin/mysql.exe\" -u root sinso_ptz -e \"SELECT * FROM tracks;\")",
+      "Bash(powershell -Command \"Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force\")",
+      "Bash(rm -rf \"/d/tmp_logs\")"
+    ]
+  }
+}
