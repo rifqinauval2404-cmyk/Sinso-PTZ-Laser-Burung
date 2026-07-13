@@ -8,6 +8,13 @@ CREATE TABLE IF NOT EXISTS tracks (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
+-- Dwell timing travels WITH the track (not per-schedule) so both manual Play and
+-- Jadwal Otomatis (scheduleRunner.js) use the same "Tahan"/"Diam di awal" values the
+-- track was saved with. ADD COLUMN IF NOT EXISTS so re-running this file against an
+-- existing database backfills these on old tracks via the DEFAULT.
+ALTER TABLE tracks ADD COLUMN IF NOT EXISTS dwell_ms INT UNSIGNED NOT NULL DEFAULT 800;
+ALTER TABLE tracks ADD COLUMN IF NOT EXISTS loop_dwell_ms INT UNSIGNED NOT NULL DEFAULT 30000;
+
 CREATE TABLE IF NOT EXISTS track_waypoints (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   track_id INT UNSIGNED NOT NULL,

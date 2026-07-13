@@ -3,6 +3,13 @@ const schedulesRepo = require("../db/schedulesRepo");
 const tracksRepo = require("../db/tracksRepo");
 
 const DEFAULT_DWELL_MS = 800; // matches the frontend's manual-playback default
+// Must stay in sync with frontend/src/constants.js DWELL_KEEPALIVE_MS - the device firmware
+// auto-drives to its own hardware preset after ~45-50s with no move command (confirmed live,
+// see PROJECT_CONTEXT.md); resending the current goto-angle at this interval during any long
+// dwell keeps it from ever going idle that long. Schedules can now carry a per-track
+// loopDwellMs (see tracksRepo.js) that's long enough to hit this, so this needs the same
+// protection the frontend's manual Play already has (App.jsx scheduleDwell).
+const DWELL_KEEPALIVE_MS = 20000;
 
 // Runs schedules independent of any frontend connection - the backend process itself
 // checks the clock and drives the device directly via deviceClient, so schedules keep
@@ -24,14 +31,35 @@ function createScheduleRunner({ deviceClient, activityLogRepo }) {
     });
   }
 
-  function dwellWait(session) {
+  // Waits out `dwellMs` at `waypoint`. If longer than DWELL_KEEPALIVE_MS, periodically
+  // resends the same goto-angle as a keep-alive (see DWELL_KEEPALIVE_MS comment above) -
+  // mirrors frontend/src/App.jsx's scheduleDwell(). session._dwellResolve/session.dwellTimer
+  // always point at the CURRENT pending wait so stopSession() can cancel/wake it at any
+  // point in the tick chain, not just the final leg.
+  function dwellWait(session, waypoint, dwellMs) {
     return new Promise((resolve) => {
-      session._dwellResolve = resolve;
-      session.dwellTimer = setTimeout(() => {
-        session.dwellTimer = null;
-        session._dwellResolve = null;
-        resolve();
-      }, session.dwellMs);
+      const deadline = Date.now() + dwellMs;
+      function tick() {
+        if (session.interrupted) { resolve(); return; }
+        const remaining = deadline - Date.now();
+        session._dwellResolve = resolve;
+        if (remaining <= DWELL_KEEPALIVE_MS) {
+          session.dwellTimer = setTimeout(() => {
+            session.dwellTimer = null;
+            session._dwellResolve = null;
+            resolve();
+          }, Math.max(remaining, 0));
+        } else {
+          session.dwellTimer = setTimeout(() => {
+            session.dwellTimer = null;
+            session._dwellResolve = null;
+            if (session.interrupted) { resolve(); return; }
+            deviceClient.gotoAngleAndWait(waypoint.h, waypoint.v).catch(() => {});
+            tick();
+          }, DWELL_KEEPALIVE_MS);
+        }
+      }
+      tick();
     });
   }
 
@@ -47,9 +75,23 @@ function createScheduleRunner({ deviceClient, activityLogRepo }) {
       if (!result) break; // cancelled by a manual command elsewhere - stop, don't retry
       log("arrived", { angleH: result.pos.h, angleV: result.pos.v });
 
-      await dwellWait(session);
+      // Loop back to waypoint 0 after a full lap uses the track's loopDwellMs ("Diam di
+      // awal") instead of the normal per-waypoint dwellMs - mirrors App.jsx's
+      // isLoopBackToStart/justLoopedRef exactly.
+      const isLoopBackToStart = session.currentIndex === 0 && session.justLooped;
+      const dwellMs = isLoopBackToStart ? session.loopDwellMs : session.dwellMs;
+      if (isLoopBackToStart) session.justLooped = false;
+
+      await dwellWait(session, wp, dwellMs);
       if (session.interrupted) break;
-      session.currentIndex = (session.currentIndex + 1) % session.waypoints.length;
+
+      const nextIndex = session.currentIndex + 1;
+      if (nextIndex >= session.waypoints.length) {
+        session.currentIndex = 0;
+        session.justLooped = true;
+      } else {
+        session.currentIndex = nextIndex;
+      }
     }
   }
 
@@ -58,7 +100,16 @@ function createScheduleRunner({ deviceClient, activityLogRepo }) {
     const track = await tracksRepo.getTrack(schedule.track_id);
     if (!track || track.waypoints.length === 0) return;
 
-    const session = { waypoints: track.waypoints, currentIndex: 0, dwellMs: DEFAULT_DWELL_MS, interrupted: false, dwellTimer: null, _dwellResolve: null };
+    const session = {
+      waypoints: track.waypoints,
+      currentIndex: 0,
+      dwellMs: track.dwellMs ?? DEFAULT_DWELL_MS,
+      loopDwellMs: track.loopDwellMs ?? DEFAULT_DWELL_MS,
+      justLooped: false,
+      interrupted: false,
+      dwellTimer: null,
+      _dwellResolve: null,
+    };
     activeSessions.set(schedule.id, session);
 
     deviceClient.sendCommand(COMMANDS["laser-on"]);

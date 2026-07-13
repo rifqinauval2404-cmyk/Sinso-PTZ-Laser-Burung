@@ -25,7 +25,7 @@ export default function App() {
   const [laserOn, setLaserOn] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [dwellMs, setDwellMs] = useState(800);
-  const [loopDwellMs, setLoopDwellMs] = useState(60000);
+  const [loopDwellMs, setLoopDwellMs] = useState(30000);
   const [loop, setLoop] = useState(true);
   const [logLines, setLogLines] = useState([]);
   const [tracks, setTracks] = useState([]);
@@ -262,7 +262,7 @@ export default function App() {
   }
 
   function handleSaveAsNewTrack(name) {
-    api.createTrack({ name, waypoints }).then((track) => {
+    api.createTrack({ name, waypoints, dwellMs, loopDwellMs }).then((track) => {
       log(`Track "${name}" disimpan ke database (${track.waypoints.length} titik)`);
       refreshTracks();
       setSelectedTrackId(track.id);
@@ -271,7 +271,7 @@ export default function App() {
   function handleUpdateSelectedTrack() {
     const t = tracks.find((x) => String(x.id) === String(selectedTrackId));
     if (!t) return;
-    api.updateTrack(selectedTrackId, { name: t.name, waypoints }).then(() => {
+    api.updateTrack(selectedTrackId, { name: t.name, waypoints, dwellMs, loopDwellMs }).then(() => {
       log(`Track "${t.name}" diperbarui di database`);
       refreshTracks();
     }).catch((err) => log("Gagal update track: " + err.message));
@@ -290,6 +290,8 @@ export default function App() {
     if (!id) return;
     api.getTrack(id).then((track) => {
       handleLoadWaypoints(track.waypoints);
+      setDwellMs(track.dwellMs);
+      setLoopDwellMs(track.loopDwellMs);
     }).catch((err) => log("Gagal load track: " + err.message));
   }
 

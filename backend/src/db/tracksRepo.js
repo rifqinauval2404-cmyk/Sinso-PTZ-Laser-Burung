@@ -11,13 +11,21 @@ async function listTracks() {
 }
 
 async function getTrack(id) {
-  const [[track]] = await pool.query(`SELECT id, name, created_at, updated_at FROM tracks WHERE id = ?`, [id]);
+  const [[track]] = await pool.query(
+    `SELECT id, name, created_at, updated_at, dwell_ms AS dwellMs, loop_dwell_ms AS loopDwellMs FROM tracks WHERE id = ?`,
+    [id]
+  );
   if (!track) return null;
   const [waypoints] = await pool.query(
     `SELECT angle_h AS h, angle_v AS v, laser FROM track_waypoints WHERE track_id = ? ORDER BY seq ASC`,
     [id]
   );
-  return { ...track, waypoints: waypoints.map((w) => ({ h: Number(w.h), v: Number(w.v), laser: !!w.laser })) };
+  return {
+    ...track,
+    dwellMs: Number(track.dwellMs),
+    loopDwellMs: Number(track.loopDwellMs),
+    waypoints: waypoints.map((w) => ({ h: Number(w.h), v: Number(w.v), laser: !!w.laser })),
+  };
 }
 
 async function insertWaypoints(conn, trackId, waypoints) {
@@ -26,11 +34,14 @@ async function insertWaypoints(conn, trackId, waypoints) {
   await conn.query(`INSERT INTO track_waypoints (track_id, seq, angle_h, angle_v, laser) VALUES ?`, [values]);
 }
 
-async function createTrack({ name, waypoints }) {
+async function createTrack({ name, waypoints, dwellMs, loopDwellMs }) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
-    const [result] = await conn.query(`INSERT INTO tracks (name) VALUES (?)`, [name]);
+    const [result] = await conn.query(
+      `INSERT INTO tracks (name, dwell_ms, loop_dwell_ms) VALUES (?, ?, ?)`,
+      [name, dwellMs ?? 800, loopDwellMs ?? 30000]
+    );
     await insertWaypoints(conn, result.insertId, waypoints);
     await conn.commit();
     return getTrack(result.insertId);
@@ -44,11 +55,14 @@ async function createTrack({ name, waypoints }) {
 
 // Replace name + waypoints in one transaction (delete-then-reinsert waypoints - simplest
 // correct semantics for reordering/inserting-in-the-middle vs. a diff-based update).
-async function updateTrack(id, { name, waypoints }) {
+async function updateTrack(id, { name, waypoints, dwellMs, loopDwellMs }) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
-    await conn.query(`UPDATE tracks SET name = ? WHERE id = ?`, [name, id]);
+    await conn.query(
+      `UPDATE tracks SET name = ?, dwell_ms = ?, loop_dwell_ms = ? WHERE id = ?`,
+      [name, dwellMs ?? 800, loopDwellMs ?? 30000, id]
+    );
     await conn.query(`DELETE FROM track_waypoints WHERE track_id = ?`, [id]);
     await insertWaypoints(conn, id, waypoints);
     await conn.commit();

@@ -11,11 +11,11 @@ router.get("/", async (req, res, next) => {
 
 router.post("/", async (req, res, next) => {
   try {
-    const { name, waypoints } = req.body;
+    const { name, waypoints, dwellMs, loopDwellMs } = req.body;
     if (!name || !Array.isArray(waypoints)) {
       return res.status(400).json({ error: "name and waypoints[] are required" });
     }
-    res.status(201).json(await tracksRepo.createTrack({ name, waypoints }));
+    res.status(201).json(await tracksRepo.createTrack({ name, waypoints, dwellMs, loopDwellMs }));
   } catch (err) { next(err); }
 });
 
@@ -29,11 +29,11 @@ router.get("/:id", async (req, res, next) => {
 
 router.put("/:id", async (req, res, next) => {
   try {
-    const { name, waypoints } = req.body;
+    const { name, waypoints, dwellMs, loopDwellMs } = req.body;
     if (!name || !Array.isArray(waypoints)) {
       return res.status(400).json({ error: "name and waypoints[] are required" });
     }
-    res.json(await tracksRepo.updateTrack(req.params.id, { name, waypoints }));
+    res.json(await tracksRepo.updateTrack(req.params.id, { name, waypoints, dwellMs, loopDwellMs }));
   } catch (err) { next(err); }
 });
 
