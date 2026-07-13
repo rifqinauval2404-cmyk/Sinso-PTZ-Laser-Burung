@@ -1,7 +1,7 @@
 require("dotenv").config();
 
 module.exports = {
-  deviceIp: process.env.DEVICE_IP || "192.168.1.60",
+  deviceIp: process.env.DEVICE_IP || "10.8.242.50",
   devicePort: parseInt(process.env.DEVICE_PORT || "4196", 10),
   port: parseInt(process.env.PORT || "3001", 10),
   // "0.0.0.0" (all interfaces) by default so a phone/tablet on the same LAN can reach the

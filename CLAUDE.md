@@ -11,7 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Custom web HMI replacing the original Sinso exe, to control a PTZ + laser bird-deterrent device over the network.
 
 - `hmi.html` — browser UI (open directly as `file://`). 3D dome wireframe for aiming, waypoint/track builder, manual jog controls, laser toggle. Talks to `server.js` over `ws://localhost:8765`.
-- `server.js` — Node WebSocket↔TCP bridge (`npm install && node server.js`). Translates JSON commands to Pelco-D byte frames, sends over raw TCP to the device (`192.168.1.60:4196` by default, override via `DEVICE_IP`/`DEVICE_PORT`/`WS_PORT` env vars), and polls Position Query to report real device position back to the browser.
+- `server.js` — Node WebSocket↔TCP bridge (`npm install && node server.js`). Translates JSON commands to Pelco-D byte frames, sends over raw TCP to the device (`10.8.242.50:4196` by default — moved from `192.168.1.60` onto the TJB company network, see PROJECT_CONTEXT.md, override via `DEVICE_IP`/`DEVICE_PORT`/`WS_PORT` env vars), and polls Position Query to report real device position back to the browser.
 - `package.json` — single dependency `ws`. `npm start` runs `node server.js`.
 
 Legacy/obsolete files, kept but not used by the current HMI:

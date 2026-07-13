@@ -80,9 +80,9 @@ Di `/data/www/pkl/rifqi_sinso_ptz/backend/`, buat file `.env` baru (`nano .env`)
 **Jangan pakai `.env` dari laptop** — isinya kredensial & IP lokal.
 
 ```ini
-PORT=54xx                # port dijatah pembimbing (5401-5449)
+PORT=54xx                # port dijatah pembimbing (5401-5449) - WAJIB, tidak ada cara melewatinya
 HOST=127.0.0.1           # WAJIB. Jangan 0.0.0.0 (aturan server)
-DEVICE_IP=<ip device di jaringan perusahaan>
+DEVICE_IP=10.8.242.50    # IP device PTZ setelah dipindah ke jaringan perusahaan
 DEVICE_PORT=4196
 API_KEY=<bikin string acak sendiri, jangan "change-me">
 MYSQL_HOST=127.0.0.1
@@ -92,6 +92,8 @@ MYSQL_PASSWORD=<dari pembimbing>
 MYSQL_DATABASE=<dari pembimbing>
 CORS_ORIGIN=http://10.8.242.8
 ```
+
+> **Belum dapat kredensial database dari pembimbing?** Tidak masalah, tidak perlu menunggu itu untuk lanjut. Aplikasi ini tetap bisa start dan menjalankan kontrol PTZ (jog/goto/laser) walau MySQL belum konek dengan benar - koneksi DB yang gagal cuma bikin fitur simpan Track/Jadwal error, tidak bikin backend mati. Isi `MYSQL_*` dengan nilai asal dulu (`MYSQL_USER=sinso`, `MYSQL_PASSWORD=sinso`, `MYSQL_DATABASE=sinso_ptz`) supaya bisa lanjut ke langkah 7 (PM2) dan memastikan "Forbidden" hilang - update lagi + `pm2 restart` begitu kredensial asli didapat. **PORT tetap wajib ditunggu dari pembimbing** - server ini dipakai bersama, port sembarangan berisiko bentrok dengan proses PKL lain atau aplikasi produksi.
 
 Yang perlu diminta ke pembimbing IT: **port**, **nama + user + password database**, dan nanti **proxy**.
 
@@ -153,6 +155,7 @@ scp -r ./Rifqi_Sinso_PTZ/frontend/dist pkl@10.8.242.8:/data/www/pkl/rifqi_sinso_
 |---|---|
 | `scp: No such file or directory` | Folder tujuan belum dibuat → jalankan langkah 1 |
 | `404` di `http://10.8.242.8/pkl/rifqi_sinso_ptz/` | Proxy belum dibuat pembimbing |
+| **`Forbidden` (halaman Apache, bukan dari app kita)** | Wajar kalau belum sampai langkah 7 - artinya app belum pernah `pm2 start`, jadi proxy (kalau sudah dibuat) tidak ada backend untuk diteruskan. Selesaikan langkah 5-7 dulu |
 | `503 Service Unavailable` | App mati → `pm2 list` & `pm2 logs pkl-rifqi_sinso_ptz` |
 | Halaman putih, file `.js`/`.css` 404 | `frontend/dist/` tidak ter-upload, atau `backend/` & `frontend/` tidak bersebelahan |
 | `Bridge/device not connected` di HMI | Backend hidup, tapi tidak bisa konek TCP ke device → cek `DEVICE_IP` di `.env` & jangkauan jaringan |
