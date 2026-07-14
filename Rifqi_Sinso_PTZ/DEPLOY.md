@@ -129,6 +129,17 @@ Setelah jadi, aplikasi bisa dibuka di:
 http://10.8.242.8/pkl/rifqi_sinso_ptz/
 ```
 
+## 9. Upload dokumentasi (PROJECT_CONTEXT.md)
+
+`PROJECT_CONTEXT.md` (rangkuman lengkap project - tech stack, cara jalan, protokol device, dll) bukan bagian `backend/`/`frontend/`, jadi di-upload terpisah, sejajar dengan keduanya:
+
+```bash
+cd "d:/KULIAH/MAGANG/PLN/robot laser burung/sinso-ptz-bird-deterrent"
+scp ./Rifqi_Sinso_PTZ/PROJECT_CONTEXT.md pkl@10.8.242.8:/data/www/pkl/rifqi_sinso_ptz/
+```
+
+Kalau isinya berubah lagi nanti, copy ulang dari root project (`cp PROJECT_CONTEXT.md Rifqi_Sinso_PTZ/`) lalu `scp` ulang dengan perintah yang sama.
+
 ---
 
 ## Update kode setelah ada perubahan

@@ -75,6 +75,10 @@ frontend/src/
     TrackCanvas/                canvas 3D wireframe (aiming + waypoint builder)
 ```
 
+Folder lain di root:
+- **`sinso bawaan PLN/`** — arsip file ASLI bawaan PLN + prototipe pertama sebelum ada `frontend/`/`backend/` (exe original, config `.ini`, `hmi.html`+`server.js` generasi pertama). **Jangan disentuh** kecuali diminta eksplisit — bukan bagian aplikasi aktif.
+- **`Rifqi_Sinso_PTZ/`** — salinan source (tanpa `node_modules`) yang sudah pernah di-deploy ke server PKL TJB, plus `DEPLOY.md` (panduan deploy lengkap step-by-step). Lihat bagian 12.
+- **`PANDUAN_PKL (1).md`** — panduan umum server PKL dari perusahaan (bukan spesifik project ini).
 
 ## 5. Yang harus diinstal (prasyarat)
 
