@@ -12,13 +12,13 @@ Device fisik: kotak berdiri dengan motor pan (horizontal) + motor tilt (vertikal
 
 | Bagian | Teknologi |
 |---|---|
-| Frontend | React 18 (`react`/`react-dom` ^18.3.1) + Vite 5 sebagai dev server/bundler |
+| Frontend : React 18 (`react`/`react-dom` ^18.3.1) + Vite 5 sebagai dev server/bundler |
 | Komunikasi frontend↔backend | WebSocket native browser (kontrol real-time + posisi) + `fetch` REST (CRUD track/jadwal/log) |
-| Backend | Node.js + Express 4 (REST API) + `ws` 8 (WebSocket server) |
+| Backend : Node.js + Express 4 (REST API) + `ws` 8 (WebSocket server) |
 | Komunikasi backend↔device | Node `net` module — raw TCP socket, protokol Pelco-D (bukan library pihak ketiga) |
-| Database | MySQL/MariaDB, driver `mysql2` — tabel tracks, track_waypoints, schedules, activity_log |
-| Env/config | `dotenv` |
-| Proses production | PM2 (dipakai di server deploy, lihat bagian 12) |
+| Database : MySQL/MariaDB, driver `mysql2` — tabel tracks, track_waypoints, schedules, activity_log |
+| Env/config : `dotenv` |
+| Proses production : PM2 (dipakai di server deploy, lihat bagian 12) |
 | Node version | Tidak ada `engines` field eksplisit di `package.json`; environment pengembangan pakai Node v24. Node 18 LTS ke atas seharusnya aman (dev script backend pakai `node --watch`, butuh Node ≥18.11) |
 
 ## 3. Arsitektur
@@ -75,10 +75,6 @@ frontend/src/
     TrackCanvas/                canvas 3D wireframe (aiming + waypoint builder)
 ```
 
-Folder lain di root:
-- **`sinso bawaan PLN/`** — arsip file ASLI bawaan PLN + prototipe pertama sebelum ada `frontend/`/`backend/` (exe original, config `.ini`, `hmi.html`+`server.js` generasi pertama). **Jangan disentuh** kecuali diminta eksplisit — bukan bagian aplikasi aktif.
-- **`Rifqi_Sinso_PTZ/`** — salinan source (tanpa `node_modules`) yang sudah pernah di-deploy ke server PKL TJB, plus `DEPLOY.md` (panduan deploy lengkap step-by-step). Lihat bagian 12.
-- **`PANDUAN_PKL (1).md`** — panduan umum server PKL dari perusahaan (bukan spesifik project ini).
 
 ## 5. Yang harus diinstal (prasyarat)
 
@@ -188,18 +184,78 @@ Frame umum: `FF [Addr=00] [Cmd1] [Cmd2] [Data1] [Data2] [Checksum]`, checksum = 
 
 ## 12. Deployment ke server PKL (TJB)
 
-Project ini sudah pernah di-deploy ke server intranet perusahaan (`10.8.242.8`), folder `/data/www/pkl/rifqi_sinso_ptz/`. Panduan lengkap step-by-step (upload, `.env` production, PM2, troubleshooting) ada di **`Rifqi_Sinso_PTZ/DEPLOY.md`** — baca itu kalau mau deploy ulang atau update kode di server.
+Project ini sudah di-deploy ke server intranet perusahaan (`10.8.242.8`), folder `/data/www/pkl/rifqi_sinso_ptz/`. Panduan lengkap (termasuk kenapa `scp` awal sempat gagal & troubleshooting) ada di **`Rifqi_Sinso_PTZ/DEPLOY.md`** — bagian ini rangkuman langkah **untuk MENYALAKAN aplikasi setelah file (`backend/`, `frontend/`, `PROJECT_CONTEXT.md`) sudah ter-upload ke server**.
+
+Semua langkah di bawah dijalankan **di dalam server** (`ssh pkl@10.8.242.8` dulu), bukan di laptop.
+
+### a. Install dependency backend
+```bash
+cd /data/www/pkl/rifqi_sinso_ptz/backend
+npm install --omit=dev
+```
+Frontend tidak perlu `npm install`/build di server — `frontend/dist/` (hasil build) sudah ikut ter-upload.
+
+### b. Minta ke pembimbing IT (kalau belum punya)
+- **Port** (dijatah dari rentang 5401–5449) — **wajib**, jangan pilih sendiri (server dipakai bersama, resiko bentrok proses lain).
+- **Kredensial database**: nama DB + user + password MariaDB.
+- (Nanti setelah aplikasi jalan) **proxy** `/pkl/rifqi_sinso_ptz/` → port yang dijatah.
+
+### c. Buat file `.env` production
+Di `/data/www/pkl/rifqi_sinso_ptz/backend/` (`nano .env`) — **jangan pakai `.env` dari laptop**, isinya kredensial/IP lokal yang beda:
+```ini
+PORT=54xx                # dari pembimbing - wajib
+HOST=127.0.0.1           # wajib, jangan 0.0.0.0
+DEVICE_IP=10.8.242.50
+DEVICE_PORT=4196
+API_KEY=<buat string acak sendiri, jangan "change-me">
+MYSQL_HOST=127.0.0.1
+MYSQL_PORT=3306
+MYSQL_USER=<dari pembimbing>
+MYSQL_PASSWORD=<dari pembimbing>
+MYSQL_DATABASE=<dari pembimbing>
+CORS_ORIGIN=http://10.8.242.8
+```
+> Belum dapat kredensial DB? Boleh isi `MYSQL_*` asal dulu (mis. `sinso`/`sinso`/`sinso_ptz`) supaya bisa lanjut ke langkah PM2 — backend tetap start dan kontrol PTZ (jog/goto/laser) tetap jalan walau MySQL gagal konek, cuma fitur simpan Track/Jadwal yang error sampai kredensial asli diisi + `pm2 restart`. **PORT tetap wajib ditunggu dari pembimbing**, tidak ada cara amannya melewati ini.
+
+### d. Import skema database
+```bash
+mysql -u <db_user> -p <db_name> < /data/www/pkl/rifqi_sinso_ptz/backend/src/db/schema.sql
+```
+
+### e. Jalankan lewat PM2
+```bash
+cd /data/www/pkl/rifqi_sinso_ptz/backend
+pm2 start src/index.js --name pkl-rifqi_sinso_ptz
+pm2 save                              # wajib, biar hidup lagi setelah server reboot
+pm2 logs pkl-rifqi_sinso_ptz          # cek error
+```
+Tes dari dalam server (sebelum proxy dibuat): `curl http://127.0.0.1:54xx/api/health` harus balas `{"ok":true}`. (`pm2 list` menampilkan proses teman PKL lain juga — jangan restart/delete yang bukan milik sendiri.)
+
+### f. Minta proxy ke pembimbing
+Lapor pembimbing untuk dibuatkan proxy `/pkl/rifqi_sinso_ptz/` → port tadi. Setelah jadi, aplikasi bisa dibuka di `http://10.8.242.8/pkl/rifqi_sinso_ptz/`.
+
+### Kalau ada error saat langkah di atas
+Lihat tabel troubleshooting di `Rifqi_Sinso_PTZ/DEPLOY.md` (gejala umum: `Forbidden` = app belum `pm2 start`, `404` = proxy belum dibuat, halaman putih = `frontend/dist` tidak lengkap/tidak sejajar `backend`, dll).
+
+### Update kode ke depannya (setelah ada perubahan di laptop)
+**Backend berubah:**
+```bash
+scp -r ./Rifqi_Sinso_PTZ/backend/src pkl@10.8.242.8:/data/www/pkl/rifqi_sinso_ptz/backend/
+ssh pkl@10.8.242.8 "pm2 restart pkl-rifqi_sinso_ptz"
+```
+**Frontend berubah** (build dulu di laptop, upload `dist/`-nya, tidak perlu restart PM2):
+```bash
+cd frontend && npm run build && cd ..
+cp -r ./frontend/dist ./Rifqi_Sinso_PTZ/frontend/
+scp -r ./Rifqi_Sinso_PTZ/frontend/dist pkl@10.8.242.8:/data/www/pkl/rifqi_sinso_ptz/frontend/
+```
 
 Catatan teknis penting yang melandasi kenapa kode ditulis seperti sekarang:
 - `frontend/vite.config.js` pakai `base: "./"` (path relatif) supaya build tetap benar walau disajikan dari sub-path (`/pkl/rifqi_sinso_ptz/`) di belakang reverse proxy.
 - `frontend/src/api/client.js` (fetch) dan `frontend/src/api/useWebSocket.js` (WS URL) dihitung relatif terhadap halaman saat ini, bukan hardcode path absolut dari root domain — supaya jalan baik di lokal (`/`) maupun di sub-path server.
 - `backend/src/config.js` punya `HOST` configurable (default `0.0.0.0` lokal, di-set `127.0.0.1` di server produksi) — server PKL mewajibkan backend cuma bind ke loopback, diakses lewat reverse proxy Apache.
 
-## 13. File/folder yang TIDAK dipakai lagi
-
-- **`sinso bawaan PLN/`** — arsip: `Sinso Control System V3.1.2.exe` (aplikasi asli, tanpa source), config `.ini` (`123.ini`/`321.ini`/`322.ini`) untuk exe asli, `path-builder.html` (config builder dari sebelum diketahui device ini PTZ), `hmi.html`+`server.js`+`package.json` (prototipe pertama, generasi sebelum ada `frontend/`+`backend/`). Semua ini **sengaja disimpan sebagai arsip**, bukan dipakai aplikasi aktif — jangan diubah kecuali diminta eksplisit.
-
-## 14. TODO / belum lengkap
+## 13. TODO / belum lengkap
 
 - Cari batas minimum Pan (H) — lihat bagian 9.
 - Belum ada cara mematikan fitur auto-return-to-preset device secara permanen (bukan lewat command Pelco-D, karena preset command terbukti tidak aman dicoba — lihat bagian 8). Mitigasi saat ini murni software (keep-alive), bukan menghilangkan akar perilaku device.
